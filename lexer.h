@@ -10,11 +10,11 @@ const std::unordered_map<std::string, token_type> keywords__{
     {"var", var__},     {"if", if__},       {"else", else__},
     {"for", for__},     {"while", while__}, {"return", return__},
     {"fun", fun__},     {"class", class__}, {"true", true__},
-    {"false", false__}, {"nil", nil__}};
+    {"false", false__}, {"nil", nil__},     {"print", print__}};
 } // namespace
 
 class lexer final {
-
+public:
   lexer(std::string source) : source_{source} {}
 
   std::vector<token> scan() {
@@ -26,6 +26,7 @@ class lexer final {
     return tokens_;
   }
 
+private:
   void scan_token() {
     prev_ = next_;
     switch (const auto c{next()}; c) {
@@ -143,7 +144,6 @@ class lexer final {
 
   bool is_end() const noexcept { return next_ >= std::size(source_); }
 
-private:
   const std::string source_{};
   std::vector<token> tokens_{};
   std::string::size_type prev_{}, next_{};

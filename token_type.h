@@ -34,5 +34,6 @@ enum struct token_type {
   string__,
   number__,
   identifier__,
+  print__,
   eof__
 };
