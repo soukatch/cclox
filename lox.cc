@@ -9,18 +9,10 @@ void run(std::string source) {
   lexer l{source};
   auto tokens{l.scan()};
   parser p{tokens};
-  auto ast{p.parse()};
+  auto stmts{p.parse()};
 
-  auto x{ast->operator()()};
-
-  if (is_bool(x))
-    std::cout << std::boolalpha << std::get<bool>(x) << std::endl;
-  else if (is_number(x))
-    std::cout << std::get<double>(x) << std::endl;
-  else if (is_string(x))
-    std::cout << std::get<std::string>(x) << std::endl;
-  else
-    std::cout << "expr error encountered" << std::endl;
+  for (auto &&x : stmts)
+    x->operator()();
 }
 
 void run_prompt() {

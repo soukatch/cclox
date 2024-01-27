@@ -1,6 +1,7 @@
 #pragma once
 
-#include "expr.h"
+#include "stmt.h"
+#include <format>
 #include <initializer_list>
 #include <sysexits.h>
 #include <vector>
@@ -9,7 +10,28 @@ class parser final {
 public:
   parser(std::vector<token> tokens) : tokens_{tokens} {}
 
-  std::unique_ptr<expr> parse() { return is_end() ? nullptr : expression(); }
+  std::vector<std::unique_ptr<stmt>> parse() {
+    for (; !is_end();)
+      stmts_.push_back(statement());
+
+    return std::move(stmts_);
+  }
+
+  std::unique_ptr<stmt> statement() {
+    return match(token_type::print__) ? print_statement() : expr_statement();
+  }
+
+  std::unique_ptr<stmt> expr_statement() {
+    auto s{std::make_unique<expr_stmt>(expression())};
+    consume(token_type::semi__);
+    return std::move(s);
+  }
+
+  std::unique_ptr<stmt> print_statement() {
+    auto s{std::make_unique<print_stmt>(expression())};
+    consume(token_type::semi__);
+    return std::move(s);
+  }
 
   std::unique_ptr<expr> expression() {
     using enum token_type;
@@ -126,12 +148,14 @@ public:
 
   void panic() {
     synchronize();
-    expression();
+    parse();
   }
 
   void consume(token_type type) {
-    if (!match(type))
+    if (!match(type)) {
+      std::cerr << "expected " << type << ", got " << peek().type_ << std::endl;
       panic();
+    }
   }
 
   bool match(std::initializer_list<token_type> types) {
@@ -152,4 +176,5 @@ public:
 
   std::vector<token> tokens_{};
   std::vector<token>::size_type current_{};
+  std::vector<std::unique_ptr<stmt>> stmts_{};
 };
