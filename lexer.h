@@ -18,7 +18,7 @@ public:
   lexer(std::string source) : source_{source} {}
 
   std::vector<token> scan() {
-    for (; is_end(); scan_token())
+    for (; !is_end(); scan_token())
       ;
 
     add_token(token_type::eof__);

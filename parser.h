@@ -2,13 +2,14 @@
 
 #include "expr.h"
 #include <initializer_list>
+#include <sysexits.h>
 #include <vector>
 
 class parser final {
 public:
   parser(std::vector<token> tokens) : tokens_{tokens} {}
 
-  std::unique_ptr<expr> parse() { return expression(); }
+  std::unique_ptr<expr> parse() { return is_end() ? nullptr : expression(); }
 
   std::unique_ptr<expr> expression() {
     using enum token_type;
@@ -86,19 +87,25 @@ public:
     using enum token_type;
 
     if (match({number__, string__, identifier__, true__, false__, nil__}))
-      std::make_unique<literal_expr>(prev());
+      return std::make_unique<literal_expr>(prev());
 
-    consume(l_paren__);
-    auto e{expression()};
-    consume(r_paren__);
+    if (match(l_paren__)) {
+      next();
+      auto e{expression()};
+      consume(r_paren__);
+      return std::move(e);
+    }
 
-    return std::move(e);
+    panic();
+    exit(EX_SOFTWARE);
   }
 
   void synchronize() {
     using enum token_type;
     for (; !is_end() && next().type_ != semi__;) {
       switch (peek().type_) {
+      default:
+        break;
       case if__:
         [[fallthrough]];
       case for__:
@@ -117,7 +124,10 @@ public:
     }
   }
 
-  void panic() { synchronize(); }
+  void panic() {
+    synchronize();
+    expression();
+  }
 
   void consume(token_type type) {
     if (!match(type))
