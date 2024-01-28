@@ -1,5 +1,6 @@
 #pragma once
 
+#include "env.h"
 #include "token.h"
 #include <memory>
 #include <variant>
@@ -16,12 +17,43 @@ constexpr bool is_string(auto &&x) noexcept {
   return std::holds_alternative<std::string>(x);
 }
 
-enum struct expr_error { invalid_operands };
+constexpr bool is_error(auto &&x) noexcept {
+  return std::holds_alternative<expr_error>(x);
+}
+
+std::ostream &operator<<(std::ostream &os, const expr_error &e) {
+  switch (e) {
+    using enum expr_error;
+  case invalid_operands:
+    return os << "invalid operands";
+  case undefined_identifier:
+    return os << "undefined identifier";
+  }
+}
 
 struct expr {
   virtual std::variant<double, std::string, bool, expr_error>
   operator()() const noexcept {
     return {};
+  }
+  virtual constexpr bool lvalue() const noexcept { return false; }
+  virtual constexpr token identifier() const noexcept { return {}; }
+};
+
+struct assign_expr final : expr {
+  token identifier_{};
+  std::unique_ptr<expr> rhs_{};
+
+  assign_expr(token identifier, std::unique_ptr<expr> rhs)
+      : identifier_{identifier}, rhs_{std::move(rhs)} {}
+
+  std::variant<double, std::string, bool, expr_error>
+  operator()() const noexcept override {
+    if (!env.contains(identifier_.lexeme_)) {
+      std::cout << "undefined identifier " << identifier_.lexeme_ << std::endl;
+      return expr_error::undefined_identifier;
+    }
+    return env[identifier_.lexeme_] = rhs_->operator()();
   }
 };
 
@@ -106,33 +138,6 @@ struct binary_expr final : expr {
   }
 };
 
-struct unary_expr final : expr {
-  const token op_{};
-  const std::unique_ptr<expr> rhs_{};
-
-  unary_expr(token op, std::unique_ptr<expr> rhs)
-      : op_{op}, rhs_{std::move(rhs)} {}
-
-  std::variant<double, std::string, bool, expr_error>
-  operator()() const noexcept override {
-    switch (const auto value{rhs_->operator()()}; op_.type_) {
-      using enum token_type;
-    default:
-      return {};
-    case bang__:
-      if (is_number(value))
-        return !std::get<double>(value);
-      if (is_bool(value))
-        return !std::get<bool>(value);
-      return expr_error::invalid_operands;
-    case minus__:
-      if (is_number(value))
-        return -std::get<double>(value);
-      return expr_error::invalid_operands;
-    }
-  }
-};
-
 struct grouping_expr final : expr {
   const std::unique_ptr<expr> body_{};
 
@@ -163,4 +168,48 @@ struct literal_expr final : expr {
       return false;
     }
   }
+};
+
+struct unary_expr final : expr {
+  const token op_{};
+  const std::unique_ptr<expr> rhs_{};
+
+  unary_expr(token op, std::unique_ptr<expr> rhs)
+      : op_{op}, rhs_{std::move(rhs)} {}
+
+  std::variant<double, std::string, bool, expr_error>
+  operator()() const noexcept override {
+    switch (const auto value{rhs_->operator()()}; op_.type_) {
+      using enum token_type;
+    default:
+      return {};
+    case bang__:
+      if (is_number(value))
+        return !std::get<double>(value);
+      if (is_bool(value))
+        return !std::get<bool>(value);
+      return expr_error::invalid_operands;
+    case minus__:
+      if (is_number(value))
+        return -std::get<double>(value);
+      return expr_error::invalid_operands;
+    }
+  }
+};
+
+struct var_expr final : expr {
+  token identifier_{};
+
+  var_expr(token identifier) : identifier_{identifier} {}
+
+  std::variant<double, std::string, bool, expr_error>
+  operator()() const noexcept override {
+    if (env.contains(identifier_.lexeme_))
+      return env[identifier_.lexeme_];
+    return expr_error::undefined_identifier;
+  }
+
+  constexpr bool lvalue() const noexcept override { return true; }
+
+  constexpr token identifier() const noexcept override { return identifier_; }
 };

@@ -20,41 +20,73 @@ public:
   }
 
   void parse() {
-    error_stmt_ = false;
-    for (; !is_end();)
+    for (; !is_end(); error_stmt_ = false)
       stmts_.push_back(statement());
   }
 
   std::unique_ptr<stmt> statement() {
-    return match(token_type::print__) ? print_statement() : expr_statement();
+    return match(token_type::var__)     ? decl_statement()
+           : match(token_type::print__) ? print_statement()
+                                        : expr_statement();
+  }
+
+  std::unique_ptr<stmt> decl_statement() {
+    if (!consume(token_type::identifier__))
+      return panic<stmt>();
+
+    auto name{prev()};
+    auto value{match(token_type::equal__) ? expression() : nullptr};
+
+    if (!error_stmt_ && !consume(token_type::identifier__))
+      return panic<stmt>();
+
+    return std::make_unique<decl_stmt>(name, std::move(value));
   }
 
   std::unique_ptr<stmt> expr_statement() {
     auto s{std::make_unique<expr_stmt>(expression())};
-    if (error_stmt_ || consume(token_type::semi__))
-      return std::move(s);
-    panic();
-    return {};
+    if (!error_stmt_ && !consume(token_type::semi__))
+      return panic<stmt>();
+    return std::move(s);
   }
 
   std::unique_ptr<stmt> print_statement() {
     auto s{std::make_unique<print_stmt>(expression())};
-    if (s->expr_ == nullptr)
-      return {};
-    if (error_stmt_ || consume(token_type::semi__))
-      return std::move(s);
-    panic();
-    return {};
+    if (!error_stmt_ && !consume(token_type::semi__))
+      return panic<stmt>();
+    return std::move(s);
   }
 
   std::unique_ptr<expr> expression() {
     using enum token_type;
+    auto lhs{assign()};
+
+    for (; !error_stmt_ && match(comma__);) {
+      auto op{prev()};
+      auto rhs{assign()};
+
+      if (error_stmt_)
+        return {};
+
+      lhs = std::make_unique<binary_expr>(op, std::move(lhs), std::move(rhs));
+    }
+
+    return std::move(lhs);
+  }
+
+  std::unique_ptr<expr> assign() {
     auto lhs{equality()};
 
-    for (; match(comma__);) {
-      auto op{prev()};
+    if (!error_stmt_ && match(token_type::equal__)) {
       auto rhs{equality()};
-      lhs = std::make_unique<binary_expr>(op, std::move(lhs), std::move(rhs));
+
+      if (error_stmt_)
+        return {};
+
+      if (lhs->lvalue())
+        return std::make_unique<assign_expr>(lhs->identifier(), std::move(rhs));
+
+      std::cerr << "cannot assign to rvalue." << std::endl;
     }
 
     return std::move(lhs);
@@ -64,7 +96,7 @@ public:
     using enum token_type;
     auto lhs{comparison()};
 
-    for (; match({equalequal__, bangequal__});) {
+    for (; !error_stmt_ && match({equalequal__, bangequal__});) {
       auto op{prev()};
       auto rhs{comparison()};
       lhs = std::make_unique<binary_expr>(op, std::move(lhs), std::move(rhs));
@@ -77,7 +109,8 @@ public:
     using enum token_type;
     auto lhs{term()};
 
-    for (; match({greater__, greaterequal__, less__, lessequal__});) {
+    for (; !error_stmt_ &&
+           match({greater__, greaterequal__, less__, lessequal__});) {
       auto op{prev()};
       auto rhs{term()};
       lhs = std::make_unique<binary_expr>(op, std::move(lhs), std::move(rhs));
@@ -90,7 +123,7 @@ public:
     using enum token_type;
     auto lhs{factor()};
 
-    for (; match({plus__, minus__});) {
+    for (; !error_stmt_ && match({plus__, minus__});) {
       auto op{prev()};
       auto rhs{factor()};
       lhs = std::make_unique<binary_expr>(op, std::move(lhs), std::move(rhs));
@@ -103,7 +136,7 @@ public:
     using enum token_type;
     auto lhs{unary()};
 
-    for (; match({star__, slash__});) {
+    for (; !error_stmt_ && match({star__, slash__});) {
       auto op{prev()};
       auto rhs{unary()};
       lhs = std::make_unique<binary_expr>(op, std::move(lhs), std::move(rhs));
@@ -122,20 +155,26 @@ public:
   std::unique_ptr<expr> primary() {
     using enum token_type;
 
-    if (match({number__, string__, identifier__, true__, false__, nil__}))
+    if (match({number__, string__, true__, false__, nil__}))
       return std::make_unique<literal_expr>(prev());
+
+    if (match(identifier__))
+      return std::make_unique<var_expr>(prev());
 
     if (match(l_paren__)) {
       auto e{expression()};
+
+      if (error_stmt_)
+        return {};
+
       if (consume(r_paren__))
         return std::move(e);
-      panic();
-      return {};
+
+      return panic<expr>();
     }
 
     std::cerr << "expected expression." << std::endl;
-    panic();
-    return {};
+    return panic<expr>();
   }
 
   void synchronize() {
@@ -162,11 +201,13 @@ public:
     }
   }
 
-  void panic() {
+  template <typename T>
+    requires std::is_same_v<T, expr> || std::is_same_v<T, stmt>
+  std::unique_ptr<T> panic() {
     error_ = true;
     synchronize();
-    parse();
     error_stmt_ = true;
+    return nullptr;
   }
 
   bool consume(token_type type) {
