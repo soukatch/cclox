@@ -10,11 +10,19 @@ class parser final {
 public:
   parser(std::vector<token> tokens) : tokens_{tokens} {}
 
-  std::vector<std::unique_ptr<stmt>> parse() {
-    for (; !is_end();)
-      stmts_.push_back(statement());
+  std::vector<std::unique_ptr<stmt>> make_ast() {
+    parse();
+
+    if (error_)
+      stmts_.clear();
 
     return std::move(stmts_);
+  }
+
+  void parse() {
+    error_stmt_ = false;
+    for (; !is_end();)
+      stmts_.push_back(statement());
   }
 
   std::unique_ptr<stmt> statement() {
@@ -23,14 +31,20 @@ public:
 
   std::unique_ptr<stmt> expr_statement() {
     auto s{std::make_unique<expr_stmt>(expression())};
-    consume(token_type::semi__);
-    return std::move(s);
+    if (error_stmt_ || consume(token_type::semi__))
+      return std::move(s);
+    panic();
+    return {};
   }
 
   std::unique_ptr<stmt> print_statement() {
     auto s{std::make_unique<print_stmt>(expression())};
-    consume(token_type::semi__);
-    return std::move(s);
+    if (s->expr_ == nullptr)
+      return {};
+    if (error_stmt_ || consume(token_type::semi__))
+      return std::move(s);
+    panic();
+    return {};
   }
 
   std::unique_ptr<expr> expression() {
@@ -112,14 +126,16 @@ public:
       return std::make_unique<literal_expr>(prev());
 
     if (match(l_paren__)) {
-      next();
       auto e{expression()};
-      consume(r_paren__);
-      return std::move(e);
+      if (consume(r_paren__))
+        return std::move(e);
+      panic();
+      return {};
     }
 
+    std::cerr << "expected expression." << std::endl;
     panic();
-    exit(EX_SOFTWARE);
+    return {};
   }
 
   void synchronize() {
@@ -147,15 +163,17 @@ public:
   }
 
   void panic() {
+    error_ = true;
     synchronize();
     parse();
+    error_stmt_ = true;
   }
 
-  void consume(token_type type) {
-    if (!match(type)) {
-      std::cerr << "expected " << type << ", got " << peek().type_ << std::endl;
-      panic();
-    }
+  bool consume(token_type type) {
+    if (match(type))
+      return true;
+    std::cerr << "expected " << type << ", got " << peek().type_ << std::endl;
+    return false;
   }
 
   bool match(std::initializer_list<token_type> types) {
@@ -174,6 +192,7 @@ public:
   token peek() const noexcept { return tokens_[current_]; }
   bool is_end() const noexcept { return peek().type_ == token_type::eof__; }
 
+  bool error_{}, error_stmt_{};
   std::vector<token> tokens_{};
   std::vector<token>::size_type current_{};
   std::vector<std::unique_ptr<stmt>> stmts_{};
