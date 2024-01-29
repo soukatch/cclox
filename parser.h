@@ -29,10 +29,13 @@ public:
   }
 
   std::unique_ptr<stmt> statement() {
-    return match(token_type::l_brace__) ? block_statement()
-           : match(token_type::if__)    ? if_statement()
-           : match(token_type::print__) ? print_statement()
-                                        : expr_statement();
+    using enum token_type;
+    return match(l_brace__) ? block_statement()
+           : match(for__)   ? for_statement()
+           : match(if__)    ? if_statement()
+           : match(print__) ? print_statement()
+           : match(while__) ? while_statement()
+                            : expr_statement();
   }
 
   std::unique_ptr<stmt> block_statement() {
@@ -63,10 +66,44 @@ public:
   }
 
   std::unique_ptr<stmt> expr_statement() {
-    auto s{std::make_unique<expr_stmt>(expression())};
+    auto e{std::make_unique<expr_stmt>(expression())};
     if (!error_stmt_ && !consume(token_type::semi__))
       return panic<stmt>();
-    return std::move(s);
+    return std::move(e);
+  }
+
+  std::unique_ptr<stmt> for_statement() {
+    using enum token_type;
+    if (!consume(l_paren__))
+      return panic<stmt>();
+
+    auto init{match(semi__) ? nullptr : declaration()};
+    auto cond{peek().type_ == semi__ ? std::make_unique<literal_expr>(true__)
+                                     : expression()};
+
+    if (!consume(semi__))
+      return panic<stmt>();
+
+    auto incr{peek().type_ == r_paren__ ? nullptr : expression()};
+
+    if (!consume(r_paren__))
+      return panic<stmt>();
+
+    auto body{std::make_unique<block_stmt>()};
+    body->stmts_.push_back(statement());
+
+    auto loop{std::make_unique<block_stmt>()};
+
+    if (init != nullptr)
+      loop->stmts_.push_back(std::move(init));
+
+    if (incr != nullptr)
+      body->stmts_.push_back(std::make_unique<expr_stmt>(std::move(incr)));
+
+    loop->stmts_.push_back(
+        std::make_unique<while_stmt>(std::move(cond), std::move(body)));
+
+    return std::move(loop);
   }
 
   std::unique_ptr<stmt> if_statement() {
@@ -83,6 +120,20 @@ public:
     if (!error_stmt_ && !consume(token_type::semi__))
       return panic<stmt>();
     return std::move(s);
+  }
+
+  std::unique_ptr<stmt> while_statement() {
+    if (!consume(token_type::l_paren__))
+      return panic<stmt>();
+
+    auto cond{expression()};
+
+    if (!consume(token_type::r_paren__))
+      return panic<stmt>();
+
+    auto body{statement()};
+
+    return std::make_unique<while_stmt>(std::move(cond), std::move(body));
   }
 
   std::unique_ptr<expr> expression() {

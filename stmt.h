@@ -1,5 +1,6 @@
 #include "expr.h"
 
+#include <initializer_list>
 #include <iostream>
 
 std::ostream &
@@ -80,5 +81,18 @@ struct print_stmt final : stmt {
 
   void operator()() const noexcept override {
     std::cout << expr_->operator()() << std::endl;
+  }
+};
+
+struct while_stmt final : stmt {
+  std::unique_ptr<expr> condition_{};
+  std::unique_ptr<stmt> body_{};
+
+  while_stmt(std::unique_ptr<expr> condition, std::unique_ptr<stmt> body)
+      : condition_{std::move(condition)}, body_{std::move(body)} {}
+
+  void operator()() const noexcept override {
+    for (; to_bool(condition_->operator()());)
+      body_->operator()();
   }
 };

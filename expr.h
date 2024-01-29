@@ -163,6 +163,7 @@ struct literal_expr final : expr {
   const token literal_{};
 
   literal_expr(token literal) : literal_{literal} {}
+  literal_expr(token_type type) : literal_{.type_ = type} {}
 
   std::variant<double, std::string, bool, expr_error>
   operator()() const noexcept override {
