@@ -25,9 +25,24 @@ public:
   }
 
   std::unique_ptr<stmt> statement() {
-    return match(token_type::var__)     ? decl_statement()
+    return match(token_type::l_brace__) ? block_statement()
+           : match(token_type::var__)   ? decl_statement()
            : match(token_type::print__) ? print_statement()
                                         : expr_statement();
+  }
+
+  std::unique_ptr<stmt> block_statement() {
+    std::unique_ptr<block_stmt> block{new block_stmt{}};
+
+    for (; !is_end() && !match(token_type::r_brace__);)
+      block->stmts_.push_back(statement());
+
+    if (is_end()) {
+      std::cerr << "unclosed block." << std::endl;
+      return panic<stmt>();
+    }
+
+    return std::move(block);
   }
 
   std::unique_ptr<stmt> decl_statement() {
@@ -37,10 +52,10 @@ public:
     auto name{prev()};
     auto value{match(token_type::equal__) ? expression() : nullptr};
 
-    if (!error_stmt_ && !consume(token_type::identifier__))
-      return panic<stmt>();
+    if (!error_stmt_ && consume(token_type::semi__))
+      return std::make_unique<decl_stmt>(name, std::move(value));
 
-    return std::make_unique<decl_stmt>(name, std::move(value));
+    return panic<stmt>();
   }
 
   std::unique_ptr<stmt> expr_statement() {

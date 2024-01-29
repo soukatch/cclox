@@ -3,6 +3,7 @@
 #include "env.h"
 #include "token.h"
 #include <memory>
+#include <ranges>
 #include <variant>
 
 constexpr bool is_bool(auto &&x) noexcept {
@@ -49,11 +50,12 @@ struct assign_expr final : expr {
 
   std::variant<double, std::string, bool, expr_error>
   operator()() const noexcept override {
-    if (!env.contains(identifier_.lexeme_)) {
-      std::cout << "undefined identifier " << identifier_.lexeme_ << std::endl;
-      return expr_error::undefined_identifier;
-    }
-    return env[identifier_.lexeme_] = rhs_->operator()();
+    for (auto &&e : std::views::reverse(env))
+      if (e.contains(identifier_.lexeme_))
+        return e[identifier_.lexeme_] = rhs_->operator()();
+
+    std::cout << "undefined identifier " << identifier_.lexeme_ << std::endl;
+    return expr_error::undefined_identifier;
   }
 };
 
@@ -204,8 +206,9 @@ struct var_expr final : expr {
 
   std::variant<double, std::string, bool, expr_error>
   operator()() const noexcept override {
-    if (env.contains(identifier_.lexeme_))
-      return env[identifier_.lexeme_];
+    for (auto &&e : std::views::reverse(env))
+      if (e.contains(identifier_.lexeme_))
+        return e[identifier_.lexeme_];
     return expr_error::undefined_identifier;
   }
 

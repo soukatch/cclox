@@ -18,6 +18,16 @@ struct stmt {
   virtual void operator()() const noexcept {}
 };
 
+struct block_stmt final : stmt {
+  std::vector<std::unique_ptr<stmt>> stmts_{};
+
+  void operator()() const noexcept override {
+    for (env.emplace_back(); auto &&x : stmts_)
+      x->operator()();
+    env.pop_back();
+  }
+};
+
 struct decl_stmt final : stmt {
   token identifier_{};
   std::unique_ptr<expr> value_{};
@@ -26,12 +36,15 @@ struct decl_stmt final : stmt {
       : identifier_{identifier}, value_{std::move(value)} {}
 
   void operator()() const noexcept override {
-    if (env.contains(identifier_.lexeme_)) {
+    if (env.back().contains(identifier_.lexeme_)) {
       std::cerr << identifier_.lexeme_ << " already declared." << std::endl;
       return;
     }
 
-    env[identifier_.lexeme_] = value_->operator()();
+    env.back()[identifier_.lexeme_] =
+        value_ == nullptr
+            ? std::variant<double, std::string, bool, expr_error>{}
+            : value_->operator()();
   }
 };
 
