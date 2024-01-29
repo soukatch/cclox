@@ -56,6 +56,23 @@ struct expr_stmt final : stmt {
   void operator()() const noexcept override { expr_->operator()(); }
 };
 
+struct if_stmt final : stmt {
+  std::unique_ptr<expr> condition_{};
+  std::unique_ptr<stmt> if_branch_{}, else_branch_{};
+
+  if_stmt(std::unique_ptr<expr> condition, std::unique_ptr<stmt> if_branch,
+          std::unique_ptr<stmt> else_branch = nullptr)
+      : condition_{std::move(condition)}, if_branch_{std::move(if_branch)},
+        else_branch_{std::move(else_branch)} {}
+
+  void operator()() const noexcept override {
+    if (to_bool(condition_->operator()()))
+      if_branch_->operator()();
+    else if (else_branch_ != nullptr)
+      else_branch_->operator()();
+  }
+};
+
 struct print_stmt final : stmt {
   std::unique_ptr<expr> expr_{};
 

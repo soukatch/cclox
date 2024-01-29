@@ -32,6 +32,16 @@ std::ostream &operator<<(std::ostream &os, const expr_error &e) {
   }
 }
 
+bool to_bool(const std::variant<double, std::string, bool, expr_error> &value) {
+  return is_error(value) || is_bool(value) && !std::get<bool>(value) ? false
+                                                                     : true;
+}
+
+bool to_bool(std::variant<double, std::string, bool, expr_error> &&value) {
+  return is_error(value) || is_bool(value) && !std::get<bool>(value) ? false
+                                                                     : true;
+}
+
 struct expr {
   virtual std::variant<double, std::string, bool, expr_error>
   operator()() const noexcept {

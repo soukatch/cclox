@@ -21,12 +21,16 @@ public:
 
   void parse() {
     for (; !is_end(); error_stmt_ = false)
-      stmts_.push_back(statement());
+      stmts_.push_back(declaration());
+  }
+
+  std::unique_ptr<stmt> declaration() {
+    return match(token_type::var__) ? decl_statement() : statement();
   }
 
   std::unique_ptr<stmt> statement() {
     return match(token_type::l_brace__) ? block_statement()
-           : match(token_type::var__)   ? decl_statement()
+           : match(token_type::if__)    ? if_statement()
            : match(token_type::print__) ? print_statement()
                                         : expr_statement();
   }
@@ -37,7 +41,7 @@ public:
     for (; !is_end() && !match(token_type::r_brace__);)
       block->stmts_.push_back(statement());
 
-    if (is_end()) {
+    if (prev().type_ != token_type::r_brace__) {
       std::cerr << "unclosed block." << std::endl;
       return panic<stmt>();
     }
@@ -63,6 +67,15 @@ public:
     if (!error_stmt_ && !consume(token_type::semi__))
       return panic<stmt>();
     return std::move(s);
+  }
+
+  std::unique_ptr<stmt> if_statement() {
+    auto cond{expression()};
+    auto if_branch{statement()},
+        else_branch{match(token_type::else__) ? statement() : nullptr};
+
+    return std::make_unique<if_stmt>(std::move(cond), std::move(if_branch),
+                                     std::move(else_branch));
   }
 
   std::unique_ptr<stmt> print_statement() {
