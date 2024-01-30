@@ -57,6 +57,17 @@ struct expr_stmt final : stmt {
   void operator()() const noexcept override { expr_->operator()(); }
 };
 
+struct fun_stmt final : stmt {
+  token name_{};
+  std::vector<token> params_{};
+  std::unique_ptr<stmt> body_{};
+
+  fun_stmt(token &&name, std::vector<token> &&params,
+           std::unique_ptr<stmt> body)
+      : name_{std::move(name)}, params_{std::move(params)},
+        body_{std::move(body)} {}
+};
+
 struct if_stmt final : stmt {
   std::unique_ptr<expr> condition_{};
   std::unique_ptr<stmt> if_branch_{}, else_branch_{};

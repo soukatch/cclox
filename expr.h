@@ -150,6 +150,13 @@ struct binary_expr final : expr {
   }
 };
 
+struct call_expr final : expr {
+  std::unique_ptr<expr> callee_{};
+  std::vector<std::unique_ptr<expr>> args_{};
+
+  call_expr(std::unique_ptr<expr> callee) : callee_{std::move(callee)} {}
+};
+
 struct grouping_expr final : expr {
   const std::unique_ptr<expr> body_{};
 

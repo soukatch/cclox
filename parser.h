@@ -25,7 +25,54 @@ public:
   }
 
   std::unique_ptr<stmt> declaration() {
-    return match(token_type::var__) ? decl_statement() : statement();
+    return match(token_type::fun__)   ? fun_declaration()
+           : match(token_type::var__) ? var_declaration()
+                                      : statement();
+  }
+
+  std::unique_ptr<stmt> fun_declaration() {
+    if (!consume(token_type::identifier__))
+      return panic<stmt>();
+
+    auto name{prev()};
+
+    if (!consume(token_type::l_paren__))
+      return panic<stmt>();
+
+    std::vector<token> params{};
+
+    if (!match(token_type::r_paren__)) {
+      if (!consume(token_type::identifier__))
+        return panic<stmt>();
+      params.push_back(prev());
+
+      for (; match(token_type::comma__);) {
+        if (!consume(token_type::identifier__))
+          return panic<stmt>();
+        params.push_back(prev());
+      }
+
+      if (!consume(token_type::r_paren__))
+        return panic<stmt>();
+    }
+
+    auto body{block_statement()};
+
+    return std::make_unique<fun_stmt>(std::move(name), std::move(params),
+                                      std::move(body));
+  }
+
+  std::unique_ptr<stmt> var_declaration() {
+    if (!consume(token_type::identifier__))
+      return panic<stmt>();
+
+    auto name{prev()};
+    auto value{match(token_type::equal__) ? expression() : nullptr};
+
+    if (!error_stmt_ && consume(token_type::semi__))
+      return std::make_unique<decl_stmt>(name, std::move(value));
+
+    return panic<stmt>();
   }
 
   std::unique_ptr<stmt> statement() {
@@ -42,7 +89,7 @@ public:
     std::unique_ptr<block_stmt> block{new block_stmt{}};
 
     for (; !is_end() && !match(token_type::r_brace__);)
-      block->stmts_.push_back(statement());
+      block->stmts_.push_back(declaration());
 
     if (prev().type_ != token_type::r_brace__) {
       std::cerr << "unclosed block." << std::endl;
@@ -50,19 +97,6 @@ public:
     }
 
     return std::move(block);
-  }
-
-  std::unique_ptr<stmt> decl_statement() {
-    if (!consume(token_type::identifier__))
-      return panic<stmt>();
-
-    auto name{prev()};
-    auto value{match(token_type::equal__) ? expression() : nullptr};
-
-    if (!error_stmt_ && consume(token_type::semi__))
-      return std::make_unique<decl_stmt>(name, std::move(value));
-
-    return panic<stmt>();
   }
 
   std::unique_ptr<stmt> expr_statement() {
@@ -228,7 +262,26 @@ public:
     using enum token_type;
     return match({bang__, minus__})
                ? std::make_unique<unary_expr>(prev(), unary())
-               : primary();
+               : call();
+  }
+
+  std::unique_ptr<expr> call() {
+    using enum token_type;
+    auto lhs{primary()};
+
+    for (; match(l_paren__);) {
+      auto c{std::make_unique<call_expr>(std::move(lhs))};
+      if (!match(r_paren__)) {
+        c->args_.push_back(assign());
+        for (; match(comma__);)
+          c->args_.push_back(assign());
+        if (!consume(r_paren__))
+          return panic<expr>();
+      }
+      lhs = std::move(c);
+    }
+
+    return std::move(lhs);
   }
 
   std::unique_ptr<expr> primary() {

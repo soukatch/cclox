@@ -9,7 +9,7 @@ void run(std::string source) {
   lexer l{source};
   auto tokens{l.scan()};
   parser p{tokens};
-  auto stmts{p.parse()};
+  auto stmts{p.make_ast()};
 
   for (auto &&x : stmts)
     x->operator()();
