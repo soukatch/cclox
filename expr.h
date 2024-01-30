@@ -44,7 +44,7 @@ bool to_bool(std::variant<double, std::string, bool, expr_error> &&value) {
 
 struct expr {
   virtual std::variant<double, std::string, bool, expr_error>
-  operator()() const noexcept {
+  operator()(std::shared_ptr<env> environ) const noexcept {
     return {};
   }
   virtual constexpr bool lvalue() const noexcept { return false; }
@@ -59,10 +59,10 @@ struct assign_expr final : expr {
       : identifier_{identifier}, rhs_{std::move(rhs)} {}
 
   std::variant<double, std::string, bool, expr_error>
-  operator()() const noexcept override {
-    for (auto &&e : std::views::reverse(env))
-      if (e.contains(identifier_.lexeme_))
-        return e[identifier_.lexeme_] = rhs_->operator()();
+  operator()(std::shared_ptr<env> environ) const noexcept override {
+    for (auto e{environ}; e != nullptr; e = e->prev_)
+      if (e->symbols_.contains(identifier_.lexeme_))
+        return e->symbols_[identifier_.lexeme_] = rhs_->operator()(environ);
 
     std::cout << "undefined identifier " << identifier_.lexeme_ << std::endl;
     return expr_error::undefined_identifier;
@@ -77,8 +77,8 @@ struct binary_expr final : expr {
       : op_{op}, lhs_{std::move(lhs)}, rhs_{std::move(rhs)} {}
 
   std::variant<double, std::string, bool, expr_error>
-  operator()() const noexcept override {
-    const auto x{lhs_->operator()()}, y{rhs_->operator()()};
+  operator()(std::shared_ptr<env> environ) const noexcept override {
+    const auto x{lhs_->operator()(environ)}, y{rhs_->operator()(environ)};
     switch (op_.type_) {
       using enum token_type;
     default:
@@ -161,8 +161,8 @@ struct grouping_expr final : expr {
   const std::unique_ptr<expr> body_{};
 
   std::variant<double, std::string, bool, expr_error>
-  operator()() const noexcept override {
-    return body_->operator()();
+  operator()(std::shared_ptr<env> environ) const noexcept override {
+    return body_->operator()(environ);
   }
 };
 
@@ -173,7 +173,7 @@ struct literal_expr final : expr {
   literal_expr(token_type type) : literal_{.type_ = type} {}
 
   std::variant<double, std::string, bool, expr_error>
-  operator()() const noexcept override {
+  operator()(std::shared_ptr<env> environ) const noexcept override {
     switch (literal_.type_) {
       using enum token_type;
     default:
@@ -198,8 +198,8 @@ struct unary_expr final : expr {
       : op_{op}, rhs_{std::move(rhs)} {}
 
   std::variant<double, std::string, bool, expr_error>
-  operator()() const noexcept override {
-    switch (const auto value{rhs_->operator()()}; op_.type_) {
+  operator()(std::shared_ptr<env> environ) const noexcept override {
+    switch (const auto value{rhs_->operator()(environ)}; op_.type_) {
       using enum token_type;
     default:
       return {};
@@ -223,10 +223,10 @@ struct var_expr final : expr {
   var_expr(token identifier) : identifier_{identifier} {}
 
   std::variant<double, std::string, bool, expr_error>
-  operator()() const noexcept override {
-    for (auto &&e : std::views::reverse(env))
-      if (e.contains(identifier_.lexeme_))
-        return e[identifier_.lexeme_];
+  operator()(std::shared_ptr<env> environ) const noexcept override {
+    for (auto e{environ}; e != nullptr; e = e->prev_)
+      if (e->symbols_.contains(identifier_.lexeme_))
+        return e->symbols_[identifier_.lexeme_];
     return expr_error::undefined_identifier;
   }
 

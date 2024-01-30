@@ -16,16 +16,15 @@ operator<<(std::ostream &os,
 }
 
 struct stmt {
-  virtual void operator()() const noexcept {}
+  virtual void operator()(std::shared_ptr<env>) const noexcept {}
 };
 
 struct block_stmt final : stmt {
   std::vector<std::unique_ptr<stmt>> stmts_{};
 
-  void operator()() const noexcept override {
-    for (env.emplace_back(); auto &&x : stmts_)
-      x->operator()();
-    env.pop_back();
+  void operator()(std::shared_ptr<env> environ) const noexcept override {
+    for (auto scope{std::make_shared<env>(environ)}; auto &&x : stmts_)
+      x->operator()(scope);
   }
 };
 
@@ -36,16 +35,16 @@ struct decl_stmt final : stmt {
   decl_stmt(token identifier, std::unique_ptr<expr> value)
       : identifier_{identifier}, value_{std::move(value)} {}
 
-  void operator()() const noexcept override {
-    if (env.back().contains(identifier_.lexeme_)) {
+  void operator()(std::shared_ptr<env> environ) const noexcept override {
+    if (environ->symbols_.contains(identifier_.lexeme_)) {
       std::cerr << identifier_.lexeme_ << " already declared." << std::endl;
       return;
     }
 
-    env.back()[identifier_.lexeme_] =
+    environ->symbols_[identifier_.lexeme_] =
         value_ == nullptr
             ? std::variant<double, std::string, bool, expr_error>{}
-            : value_->operator()();
+            : value_->operator()(environ);
   }
 };
 
@@ -54,7 +53,9 @@ struct expr_stmt final : stmt {
 
   expr_stmt(std::unique_ptr<expr> e) : expr_{std::move(e)} {}
 
-  void operator()() const noexcept override { expr_->operator()(); }
+  void operator()(std::shared_ptr<env> environ) const noexcept override {
+    expr_->operator()(environ);
+  }
 };
 
 struct fun_stmt final : stmt {
@@ -77,11 +78,11 @@ struct if_stmt final : stmt {
       : condition_{std::move(condition)}, if_branch_{std::move(if_branch)},
         else_branch_{std::move(else_branch)} {}
 
-  void operator()() const noexcept override {
-    if (to_bool(condition_->operator()()))
-      if_branch_->operator()();
+  void operator()(std::shared_ptr<env> environ) const noexcept override {
+    if (to_bool(condition_->operator()(environ)))
+      if_branch_->operator()(environ);
     else if (else_branch_ != nullptr)
-      else_branch_->operator()();
+      else_branch_->operator()(environ);
   }
 };
 
@@ -90,8 +91,8 @@ struct print_stmt final : stmt {
 
   print_stmt(std::unique_ptr<expr> e) : expr_{std::move(e)} {}
 
-  void operator()() const noexcept override {
-    std::cout << expr_->operator()() << std::endl;
+  void operator()(std::shared_ptr<env> environ) const noexcept override {
+    std::cout << expr_->operator()(environ) << std::endl;
   }
 };
 
@@ -102,8 +103,8 @@ struct while_stmt final : stmt {
   while_stmt(std::unique_ptr<expr> condition, std::unique_ptr<stmt> body)
       : condition_{std::move(condition)}, body_{std::move(body)} {}
 
-  void operator()() const noexcept override {
-    for (; to_bool(condition_->operator()());)
-      body_->operator()();
+  void operator()(std::shared_ptr<env> environ) const noexcept override {
+    for (; to_bool(condition_->operator()(environ));)
+      body_->operator()(environ);
   }
 };
